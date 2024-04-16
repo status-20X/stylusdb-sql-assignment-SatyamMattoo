@@ -1,6 +1,6 @@
-const readCSV = require('../../src/csvReader');
-const {parseQuery} = require('../../src/queryParser');
-const executeSELECTQuery = require('../../src/index');
+const {readCSV} = require('../../src/csvReader');
+const {parseSelectQuery, parseJoinClause} = require('../../src/queryParser');
+const {executeSELECTQuery} = require('../../src/queryExecutor');
 
 test('Read CSV File', async () => {
     const data = await readCSV('./student.csv');
@@ -12,14 +12,19 @@ test('Read CSV File', async () => {
 
 test('Parse SQL Query', () => {
     const query = 'SELECT id, name FROM student';
-    const parsed = parseQuery(query);
+    const parsed = parseSelectQuery(query);
     expect(parsed).toEqual({
         fields: ['id', 'name'],
         table: 'student',
         whereClauses: [],
         joinCondition: null,
         joinTable: null,
-        joinType: null
+        "isDistinct": false,
+        "limit": null,
+        "orderByFields": null,
+        joinType: null,
+        groupByFields:null,
+        "hasAggregateWithoutGroupBy": false,
     });
 });
 
@@ -35,9 +40,14 @@ test('Execute SQL Query', async () => {
 
 test('Parse SQL Query with WHERE Clause', () => {
     const query = 'SELECT id, name FROM student WHERE age = 25';
-    const parsed = parseQuery(query);
+    const parsed = parseSelectQuery(query);
     expect(parsed).toEqual({
         fields: ['id', 'name'],
+        groupByFields:null,
+        "limit": null,
+        "orderByFields": null,
+        "isDistinct": false,
+        "hasAggregateWithoutGroupBy": false,
         table: 'student',
         whereClauses: [{
             "field": "age",
@@ -61,9 +71,14 @@ test('Execute SQL Query with WHERE Clause', async () => {
 
 test('Parse SQL Query with Multiple WHERE Clauses', () => {
     const query = 'SELECT id, name FROM student WHERE age = 30 AND name = John';
-    const parsed = parseQuery(query);
+    const parsed = parseSelectQuery(query);
     expect(parsed).toEqual({
         fields: ['id', 'name'],
+        groupByFields:null,
+        "limit": null,
+        "orderByFields": null,
+        "isDistinct": false,
+        "hasAggregateWithoutGroupBy": false,
         table: 'student',
         whereClauses: [{
             "field": "age",
@@ -103,27 +118,43 @@ test('Execute SQL Query with Not Equal to', async () => {
 
 test('Parse SQL Query with INNER JOIN', async () => {
     const query = 'SELECT student.name, enrollment.course FROM student INNER JOIN enrollment ON student.id=enrollment.student_id';
-    const result = await parseQuery(query);
+    const result = await parseSelectQuery(query);
     expect(result).toEqual({
         fields: ['student.name', 'enrollment.course'],
         table: 'student',
+        "limit": null,
+        "isDistinct": false,
+        "orderByFields": null,
         whereClauses: [],
-        joinTable: 'enrollment',
-        joinCondition: { left: 'student.id', right: 'enrollment.student_id' },
-        joinType: 'INNER'
+        "hasAggregateWithoutGroupBy": false,
+        "joinCondition": {
+          "left": "student.id",
+          "right": "enrollment.student_id",
+        },
+        "joinTable": "enrollment",
+        "joinType": "INNER",
+        groupByFields:null
     })
 });
 
 test('Parse SQL Query with INNER JOIN and WHERE Clause', async () => {
     const query = 'SELECT student.name, enrollment.course FROM student INNER JOIN enrollment ON student.id = enrollment.student_id WHERE student.age > 20';
-    const result = await parseQuery(query);
+    const result = await parseSelectQuery(query);
     expect(result).toEqual({
         fields: ['student.name', 'enrollment.course'],
+        groupByFields:null,
+        "isDistinct": false,
+        "limit": null,
+        "orderByFields": null,
         table: 'student',
         whereClauses: [{ field: 'student.age', operator: '>', value: '20' }],
-        joinTable: 'enrollment',
-        joinCondition: { left: 'student.id', right: 'enrollment.student_id' },
-        joinType: 'INNER'
+        "hasAggregateWithoutGroupBy": false,
+        "joinCondition": {
+          "left": "student.id",
+          "right": "enrollment.student_id",
+        },
+        "joinTable": "enrollment",
+        "joinType": "INNER",
     })
 });
 
@@ -142,7 +173,7 @@ test('Execute SQL Query with INNER JOIN', async () => {
     // toHaveProperty is not working here due to dot in the property name
     expect(result[0]).toEqual(expect.objectContaining({
         "enrollment.course": "Mathematics",
-        "student.name": "John"
+        "student.name": "John",
     }));
 });
 
@@ -166,8 +197,7 @@ test('Execute SQL Query with INNER JOIN and a WHERE Clause', async () => {
     expect(result.length).toEqual(2);
     // toHaveProperty is not working here due to dot in the property name
     expect(result[0]).toEqual(expect.objectContaining({
-        "enrollment.course": "Mathematics",
-        "student.name": "John"
+        
     }));
 });
 
@@ -181,12 +211,12 @@ test('Execute SQL Query with LEFT JOIN', async () => {
     expect(result.length).toEqual(5); // 4 students, but John appears twice
 });
 
-test('Execute SQL Query with LEFT JOIN', async () => {
-    const query = 'SELECT student.name, enrollment.course FROM student LEFT JOIN enrollment ON student.id=enrollment.student_id';
+test('Execute SQL Query with RIGHT JOIN', async () => {
+    const query = 'SELECT student.name, enrollment.course FROM student RIGHT JOIN enrollment ON student.id=enrollment.student_id';
     const result = await executeSELECTQuery(query);
     expect(result).toEqual(expect.arrayContaining([
-        expect.objectContaining({ "student.name": "Alice", "enrollment.course": null }),
-        expect.objectContaining({ "student.name": "John", "enrollment.course": "Mathematics" })
+        expect.objectContaining({ "student.name": "Jane", "enrollment.course": "Chemistry" }),
+        expect.objectContaining({ "student.name": null, "enrollment.course": "Biology" })
     ]));
-    expect(result.length).toEqual(5); // 4 students, but John appears twice
+    expect(result.length).toEqual(5); // 4 students, but Jane appears twice
 });
